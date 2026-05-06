@@ -13,7 +13,7 @@ document.addEventListener('DOMContentLoaded', () => {
         cursorDot.style.top = `${posY}px`;
     });
 
-    const hoverTargets = document.querySelectorAll('a, button, input, textarea, .project-row');
+    const hoverTargets = document.querySelectorAll('a, button, input, textarea, .project-card');
     hoverTargets.forEach(target => {
         target.addEventListener('mouseenter', () => {
             cursorDot.style.width = '30px';
@@ -29,24 +29,94 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    /* Hero Text Animation */
-    const heroName = document.getElementById('hero-name');
-    if (heroName) {
-        const nameText = heroName.innerText;
-        heroName.innerText = '';
-        
-        const words = nameText.split(' ');
-        words.forEach((word, index) => {
-            const span = document.createElement('span');
-            span.classList.add('word-span');
-            span.innerText = word + ' ';
-            heroName.appendChild(span);
+    /* Cyber Glitch Text Animation (Preserved) */
+    const displayNames = document.querySelectorAll('.display-name');
+    const CHARS = "!<>-_\\/[]{}—=+*^?#_";
 
-            setTimeout(() => {
-                span.classList.add('visible');
-            }, 300 + (index * 150)); 
+    displayNames.forEach(nameEl => {
+        const originalText = nameEl.innerText.trim();
+        nameEl.innerHTML = '';
+        
+        const container = document.createElement('div');
+        container.className = 'cyber-glitch-container';
+        
+        const mainSpan = document.createElement('span');
+        mainSpan.className = 'cyber-text-main';
+        mainSpan.innerText = originalText;
+        
+        const layer1 = document.createElement('span');
+        layer1.className = 'cyber-text-layer red-layer';
+        layer1.setAttribute('aria-hidden', 'true');
+        layer1.style.display = 'none';
+        
+        const layer2 = document.createElement('span');
+        layer2.className = 'cyber-text-layer blue-layer';
+        layer2.setAttribute('aria-hidden', 'true');
+        layer2.style.display = 'none';
+        
+        const scanline = document.createElement('div');
+        scanline.className = 'cyber-scanline';
+        scanline.style.display = 'none';
+        
+        container.appendChild(mainSpan);
+        container.appendChild(layer1);
+        container.appendChild(layer2);
+        container.appendChild(scanline);
+        nameEl.appendChild(container);
+        
+        const scrambleDuration = 40;
+        let intervalRef = null;
+        
+        const updateText = (newText) => {
+            mainSpan.innerText = newText;
+            layer1.innerText = newText;
+            layer2.innerText = newText;
+        };
+        
+        const scramble = () => {
+            let iteration = 0;
+            clearInterval(intervalRef);
+            
+            intervalRef = setInterval(() => {
+                const currentText = originalText
+                    .split("")
+                    .map((letter, index) => {
+                        if (index < iteration) {
+                            return originalText[index];
+                        }
+                        if (letter === " ") return " ";
+                        return CHARS[Math.floor(Math.random() * CHARS.length)];
+                    })
+                    .join("");
+                    
+                updateText(currentText);
+                    
+                if (iteration >= originalText.length) {
+                    clearInterval(intervalRef);
+                    updateText(originalText);
+                }
+                
+                iteration += 1 / 3;
+            }, scrambleDuration);
+        };
+        
+        scramble();
+        
+        nameEl.addEventListener('mouseenter', () => {
+            layer1.style.display = 'block';
+            layer2.style.display = 'block';
+            scanline.style.display = 'block';
+            nameEl.classList.add('is-hovered');
+            scramble();
         });
-    }
+        
+        nameEl.addEventListener('mouseleave', () => {
+            layer1.style.display = 'none';
+            layer2.style.display = 'none';
+            scanline.style.display = 'none';
+            nameEl.classList.remove('is-hovered');
+        });
+    });
 
     /* Navbar Entrance Animation */
     const navbar = document.querySelector('.navbar');
@@ -76,7 +146,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     /* 4. COUNTER ANIMATION FOR STATS setup */
     const aboutSection = document.getElementById('about');
-    const statValues = document.querySelectorAll('#about .stat-value');
+    const statValues = document.querySelectorAll('#about .stat-val');
     let countersTriggered = false;
 
     const animateCounter = (el, target, suffix, isFadeOnly) => {
@@ -164,8 +234,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     const text = el.innerText.trim();
                     if (text === '2+') {
                         animateCounter(el, 2, '+', false);
-                    } else if (text === '4 Mo') {
-                        animateCounter(el, 4, ' Mo', false);
+                    } else if (text === '4Mo') {
+                        animateCounter(el, 4, 'Mo', false);
                     } else if (text === 'A+') {
                         animateCounter(el, 'A+', '', true);
                     }
@@ -207,8 +277,8 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     };
 
-    const projectRows = document.querySelectorAll('.project-row');
-    applyStaggeredDelay(projectRows);
+    const projectCards = document.querySelectorAll('.project-card');
+    applyStaggeredDelay(projectCards);
 
     fadeUpElements.forEach(el => {
         scrollObserver.observe(el);
@@ -229,4 +299,160 @@ document.addEventListener('DOMContentLoaded', () => {
         card.style.transitionDelay = `${index * 0.04}s`;
         cardObserver.observe(card);
     });
+
+    /* 6. CANVAS SCROLL ANIMATION FOR ABOUT SECTION */
+    const aboutCanvas = document.getElementById("about-canvas");
+    const canvasSequence = document.getElementById("about-canvas-sequence");
+    
+    if (aboutCanvas && canvasSequence) {
+        const ctx = aboutCanvas.getContext("2d", { alpha: false });
+        const frameCount = 240;
+        const images = [];
+        let currentFrameIndex = -1;
+        let canvasReady = false;
+
+        // Initialise canvas dimensions and paint frame 0 — called exactly once
+        const initCanvas = () => {
+            if (canvasReady) return;
+            const img = images[0];
+            if (!img || !img.naturalWidth) return;
+            aboutCanvas.width = img.naturalWidth;
+            aboutCanvas.height = img.naturalHeight;
+            ctx.drawImage(img, 0, 0);
+            currentFrameIndex = 0;
+            canvasReady = true;
+        };
+
+        // Preload frames (ezgif-frame-001.png to ezgif-frame-240.png)
+        for (let i = 1; i <= frameCount; i++) {
+            const img = new Image();
+            const index = i.toString().padStart(3, '0');
+            img.src = `public/images/aboutsection/ezgif-frame-${index}.png`;
+            images.push(img);
+        }
+
+        // For frame 0: handle both cached (already complete) and fresh load
+        if (images[0].complete && images[0].naturalWidth > 0) {
+            // Image already in browser cache — onload will never fire
+            initCanvas();
+        } else {
+            images[0].onload = initCanvas;
+        }
+
+        const updateCanvas = () => {
+            // Don't attempt to draw before the canvas is initialised
+            if (!canvasReady) return;
+
+            const rect = canvasSequence.getBoundingClientRect();
+            const maxScroll = rect.height - window.innerHeight;
+            
+            if (maxScroll <= 0) return;
+            
+            let progress = -rect.top / maxScroll;
+            progress = Math.max(0, Math.min(1, progress));
+            
+            // Callout visibility: each appears at its start %, exits after 18% window
+            const callouts = [
+                { el: document.getElementById('callout-1'), start: 0.20 },
+                { el: document.getElementById('callout-2'), start: 0.40 },
+                { el: document.getElementById('callout-3'), start: 0.60 },
+                { el: document.getElementById('callout-4'), start: 0.78 },
+                { el: document.getElementById('callout-5'), start: 0.88 },
+                { el: document.getElementById('callout-6'), start: 0.92 },
+            ];
+            callouts.forEach(({ el, start }) => {
+                if (!el) return;
+                const end = start + 0.18;
+                if (progress >= start && progress < end) {
+                    el.classList.add('visible');
+                } else {
+                    el.classList.remove('visible');
+                }
+            });
+            
+            const frameIndex = Math.min(frameCount - 1, Math.floor(progress * frameCount));
+            
+            // Only draw if the image is fully decoded and the frame has changed
+            if (frameIndex !== currentFrameIndex && images[frameIndex] && images[frameIndex].complete && images[frameIndex].naturalWidth > 0) {
+                ctx.drawImage(images[frameIndex], 0, 0);
+                currentFrameIndex = frameIndex;
+            }
+        };
+
+        let canvasTicking = false;
+        window.addEventListener('scroll', () => {
+            if (!canvasTicking) {
+                requestAnimationFrame(() => {
+                    updateCanvas();
+                    canvasTicking = false;
+                });
+                canvasTicking = true;
+            }
+        });
+        
+        window.addEventListener('resize', () => {
+            requestAnimationFrame(updateCanvas);
+        });
+    }
+});
+
+
+/* Contact Form Submission and Modal Logic */
+document.addEventListener('DOMContentLoaded', () => {
+    const contactForm = document.getElementById('contact-form');
+    const successModal = document.getElementById('contact-success-modal');
+    const closeModalBtn = document.getElementById('modal-close');
+
+    if (contactForm && successModal) {
+        contactForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const submitBtn = contactForm.querySelector('.submit-btn');
+            const originalBtnText = submitBtn.innerText;
+            
+            // Visual feedback: Sending...
+            submitBtn.innerText = 'EXECUTING...';
+            submitBtn.style.opacity = '0.7';
+            submitBtn.disabled = true;
+
+            const formData = new FormData(contactForm);
+            
+            try {
+                // Submit to Google Form
+                // Note: mode 'no-cors' is required for Google Forms cross-origin POST
+                await fetch(contactForm.action, {
+                    method: 'POST',
+                    body: formData,
+                    mode: 'no-cors'
+                });
+
+                // Show success modal
+                successModal.classList.add('active');
+                
+                // Reset form
+                contactForm.reset();
+            } catch (error) {
+                console.error('Submission error:', error);
+                alert('An error occurred. Please try again or email me directly.');
+            } finally {
+                // Restore button state
+                submitBtn.innerText = originalBtnText;
+                submitBtn.style.opacity = '1';
+                submitBtn.disabled = false;
+            }
+        });
+    }
+
+    if (closeModalBtn && successModal) {
+        closeModalBtn.addEventListener('click', () => {
+            successModal.classList.remove('active');
+        });
+
+        // Close modal when clicking outside the terminal window
+        successModal.addEventListener('click', (e) => {
+            if (e.target === successModal) {
+                successModal.classList.remove('active');
+            }
+        });
+    }
 });
