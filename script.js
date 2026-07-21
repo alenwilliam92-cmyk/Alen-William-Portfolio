@@ -1,33 +1,31 @@
 document.addEventListener('DOMContentLoaded', () => {
     /* Custom Cursor */
     const cursorDot = document.querySelector('.cursor-dot');
-    
-    // Disable default cursor
-    document.body.style.cursor = 'none';
 
-    window.addEventListener('mousemove', (e) => {
-        const posX = e.clientX;
-        const posY = e.clientY;
+    if (cursorDot && window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
+        document.body.classList.add('custom-cursor-enabled');
 
-        cursorDot.style.left = `${posX}px`;
-        cursorDot.style.top = `${posY}px`;
-    });
-
-    const hoverTargets = document.querySelectorAll('a, button, input, textarea, .project-card');
-    hoverTargets.forEach(target => {
-        target.addEventListener('mouseenter', () => {
-            cursorDot.style.width = '30px';
-            cursorDot.style.height = '30px';
-            cursorDot.style.backgroundColor = 'transparent';
-            cursorDot.style.border = '2px solid var(--accent-neon)';
+        window.addEventListener('mousemove', (e) => {
+            cursorDot.style.left = `${e.clientX}px`;
+            cursorDot.style.top = `${e.clientY}px`;
         });
-        target.addEventListener('mouseleave', () => {
-            cursorDot.style.width = '12px';
-            cursorDot.style.height = '12px';
-            cursorDot.style.backgroundColor = 'var(--accent-neon)';
-            cursorDot.style.border = 'none';
+
+        const hoverTargets = document.querySelectorAll('a, button, input, textarea, .project-card');
+        hoverTargets.forEach(target => {
+            target.addEventListener('mouseenter', () => {
+                cursorDot.style.width = '30px';
+                cursorDot.style.height = '30px';
+                cursorDot.style.backgroundColor = 'transparent';
+                cursorDot.style.border = '2px solid var(--accent-neon)';
+            });
+            target.addEventListener('mouseleave', () => {
+                cursorDot.style.width = '12px';
+                cursorDot.style.height = '12px';
+                cursorDot.style.backgroundColor = 'var(--accent-neon)';
+                cursorDot.style.border = 'none';
+            });
         });
-    });
+    }
 
     /* Cyber Glitch Text Animation (Preserved) */
     const displayNames = document.querySelectorAll('.display-name');
@@ -285,7 +283,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     /* 5. STAGGERED SKILL CARD ANIMATION */
-    const skillCards = document.querySelectorAll('.skill-card');
+    const skillCards = document.querySelectorAll('.masonry-item');
     const cardObserver = new IntersectionObserver((entries, observer) => {
         entries.forEach(entry => {
             if (entry.isIntersecting) {
@@ -303,96 +301,188 @@ document.addEventListener('DOMContentLoaded', () => {
     /* 6. CANVAS SCROLL ANIMATION FOR ABOUT SECTION */
     const aboutCanvas = document.getElementById("about-canvas");
     const canvasSequence = document.getElementById("about-canvas-sequence");
-    
+
     if (aboutCanvas && canvasSequence) {
         const ctx = aboutCanvas.getContext("2d", { alpha: false });
         const frameCount = 240;
-        const images = [];
-        let currentFrameIndex = -1;
-        let canvasReady = false;
+        const frameCache = new Map();
+        const missingFrames = new Set();
+        const callouts = [
+            { el: document.getElementById('callout-1'), start: 0.20 },
+            { el: document.getElementById('callout-2'), start: 0.40 },
+            { el: document.getElementById('callout-3'), start: 0.60 },
+            { el: document.getElementById('callout-4'), start: 0.78 },
+            { el: document.getElementById('callout-5'), start: 0.88 },
+            { el: document.getElementById('callout-6'), start: 0.92 },
+        ];
 
-        // Initialise canvas dimensions and paint frame 0 — called exactly once
-        const initCanvas = () => {
-            if (canvasReady) return;
-            const img = images[0];
-            if (!img || !img.naturalWidth) return;
-            aboutCanvas.width = img.naturalWidth;
-            aboutCanvas.height = img.naturalHeight;
-            ctx.drawImage(img, 0, 0);
-            currentFrameIndex = 0;
-            canvasReady = true;
+        let currentFrameIndex = -1;
+        let lastDrawnImage = null;
+        let rafPending = false;
+        let preloadRadius = window.matchMedia('(max-width: 768px)').matches ? 3 : 8;
+
+        const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+
+        const getFrameSrc = (frameIndex) => {
+            const imageNumber = String(frameIndex + 1).padStart(3, '0');
+            return `public/images/aboutsection/ezgif-frame-${imageNumber}.png`;
         };
 
-        // Preload frames (ezgif-frame-001.png to ezgif-frame-240.png)
-        for (let i = 1; i <= frameCount; i++) {
+        const paintFallback = () => {
+            if (aboutCanvas.width === 0 || aboutCanvas.height === 0) {
+                aboutCanvas.width = 1280;
+                aboutCanvas.height = 720;
+            }
+            ctx.fillStyle = '#141414';
+            ctx.fillRect(0, 0, aboutCanvas.width, aboutCanvas.height);
+        };
+
+        const resizeBackingStore = (img) => {
+            if (!img || img.naturalWidth === 0 || img.naturalHeight === 0) return false;
+            if (aboutCanvas.width !== img.naturalWidth || aboutCanvas.height !== img.naturalHeight) {
+                aboutCanvas.width = img.naturalWidth;
+                aboutCanvas.height = img.naturalHeight;
+            }
+            return true;
+        };
+
+        const drawImageFrame = (img, requestedFrameIndex, isExactFrame) => {
+            if (!resizeBackingStore(img)) return false;
+            ctx.drawImage(img, 0, 0);
+            lastDrawnImage = img;
+            if (isExactFrame) currentFrameIndex = requestedFrameIndex;
+            return true;
+        };
+
+        const scheduleCanvasUpdate = () => {
+            if (rafPending) return;
+            rafPending = true;
+            requestAnimationFrame(() => {
+                rafPending = false;
+                updateCanvas();
+            });
+        };
+
+        const requestFrame = (frameIndex, priority = false) => {
+            if (frameIndex < 0 || frameIndex >= frameCount) return null;
+            if (frameCache.has(frameIndex)) return frameCache.get(frameIndex);
+
             const img = new Image();
-            const index = i.toString().padStart(3, '0');
-            img.src = `public/images/aboutsection/ezgif-frame-${index}.png`;
-            images.push(img);
-        }
+            const src = getFrameSrc(frameIndex);
+            const record = { img, src, status: 'loading' };
+            frameCache.set(frameIndex, record);
 
-        // For frame 0: handle both cached (already complete) and fresh load
-        if (images[0].complete && images[0].naturalWidth > 0) {
-            // Image already in browser cache — onload will never fire
-            initCanvas();
-        } else {
-            images[0].onload = initCanvas;
-        }
+            img.decoding = 'async';
+            img.loading = priority ? 'eager' : 'lazy';
 
-        const updateCanvas = () => {
-            // Don't attempt to draw before the canvas is initialised
-            if (!canvasReady) return;
+            img.onload = () => {
+                record.status = 'loaded';
+                scheduleCanvasUpdate();
+            };
 
+            img.onerror = () => {
+                record.status = 'error';
+                if (!missingFrames.has(frameIndex)) {
+                    missingFrames.add(frameIndex);
+                    console.error(`Canvas frame failed to load: ${src}`);
+                }
+                scheduleCanvasUpdate();
+            };
+
+            img.src = src;
+
+            if (img.complete && img.naturalWidth > 0) {
+                record.status = 'loaded';
+            }
+
+            return record;
+        };
+
+        const preloadNearbyFrames = (centerIndex) => {
+            const start = clamp(centerIndex - preloadRadius, 0, frameCount - 1);
+            const end = clamp(centerIndex + preloadRadius, 0, frameCount - 1);
+
+            requestFrame(centerIndex, true);
+
+            for (let offset = 1; offset <= preloadRadius; offset++) {
+                requestFrame(centerIndex + offset);
+                requestFrame(centerIndex - offset);
+            }
+
+            for (const [frameIndex, record] of frameCache) {
+                const isOutsideWindow = frameIndex < start - preloadRadius || frameIndex > end + preloadRadius;
+                if (isOutsideWindow && record.status !== 'loading' && frameIndex !== currentFrameIndex) {
+                    frameCache.delete(frameIndex);
+                }
+            }
+        };
+
+        const findNearestLoadedFrame = (targetIndex) => {
+            const exact = frameCache.get(targetIndex);
+            if (exact?.status === 'loaded') return { img: exact.img, index: targetIndex, exact: true };
+
+            for (let offset = 1; offset < frameCount; offset++) {
+                const beforeIndex = targetIndex - offset;
+                const afterIndex = targetIndex + offset;
+                const before = frameCache.get(beforeIndex);
+                const after = frameCache.get(afterIndex);
+
+                if (before?.status === 'loaded') return { img: before.img, index: beforeIndex, exact: false };
+                if (after?.status === 'loaded') return { img: after.img, index: afterIndex, exact: false };
+            }
+
+            return lastDrawnImage ? { img: lastDrawnImage, index: currentFrameIndex, exact: false } : null;
+        };
+
+        const getScrollProgress = () => {
             const rect = canvasSequence.getBoundingClientRect();
-            const maxScroll = rect.height - window.innerHeight;
-            
-            if (maxScroll <= 0) return;
-            
-            let progress = -rect.top / maxScroll;
-            progress = Math.max(0, Math.min(1, progress));
-            
-            // Callout visibility: each appears at its start %, exits after 18% window
-            const callouts = [
-                { el: document.getElementById('callout-1'), start: 0.20 },
-                { el: document.getElementById('callout-2'), start: 0.40 },
-                { el: document.getElementById('callout-3'), start: 0.60 },
-                { el: document.getElementById('callout-4'), start: 0.78 },
-                { el: document.getElementById('callout-5'), start: 0.88 },
-                { el: document.getElementById('callout-6'), start: 0.92 },
-            ];
+            const scrollDistance = Math.max(1, rect.height - window.innerHeight);
+            return clamp(-rect.top / scrollDistance, 0, 1);
+        };
+
+        const updateCallouts = (progress) => {
             callouts.forEach(({ el, start }) => {
                 if (!el) return;
-                const end = start + 0.18;
-                if (progress >= start && progress < end) {
-                    el.classList.add('visible');
-                } else {
-                    el.classList.remove('visible');
-                }
+                el.classList.toggle('visible', progress >= start && progress < start + 0.18);
             });
-            
-            const frameIndex = Math.min(frameCount - 1, Math.floor(progress * frameCount));
-            
-            // Only draw if the image is fully decoded and the frame has changed
-            if (frameIndex !== currentFrameIndex && images[frameIndex] && images[frameIndex].complete && images[frameIndex].naturalWidth > 0) {
-                ctx.drawImage(images[frameIndex], 0, 0);
-                currentFrameIndex = frameIndex;
-            }
         };
 
-        let canvasTicking = false;
-        window.addEventListener('scroll', () => {
-            if (!canvasTicking) {
-                requestAnimationFrame(() => {
-                    updateCanvas();
-                    canvasTicking = false;
-                });
-                canvasTicking = true;
+        const updateCanvas = () => {
+            const progress = getScrollProgress();
+            updateCallouts(progress);
+
+            const frameIndex = clamp(Math.round(progress * (frameCount - 1)), 0, frameCount - 1);
+            preloadNearbyFrames(frameIndex);
+
+            const frame = findNearestLoadedFrame(frameIndex);
+            if (!frame) {
+                paintFallback();
+                return;
             }
-        });
-        
+
+            if (frame.exact && frame.index === currentFrameIndex) return;
+            drawImageFrame(frame.img, frameIndex, frame.exact);
+        };
+
+        const firstFrame = requestFrame(0, true);
+        if (firstFrame?.status === 'loaded') {
+            drawImageFrame(firstFrame.img, 0, true);
+        } else {
+            paintFallback();
+        }
+
+        preloadNearbyFrames(0);
+        scheduleCanvasUpdate();
+
+        window.addEventListener('scroll', scheduleCanvasUpdate, { passive: true });
+
         window.addEventListener('resize', () => {
-            requestAnimationFrame(updateCanvas);
-        });
+            preloadRadius = window.matchMedia('(max-width: 768px)').matches ? 3 : 8;
+            currentFrameIndex = -1;
+            scheduleCanvasUpdate();
+        }, { passive: true });
+
+        window.addEventListener('load', scheduleCanvasUpdate, { once: true });
     }
 });
 
